@@ -1,0 +1,76 @@
+# Render Blueprint — deploy the backend as a Node web service
+# Docs: https://render.com/docs/blueprint-spec
+#
+# After first deploy, run the DB migration once from Render Shell:
+#   cd backend && npm run db:migrate
+
+services:
+  - type: web
+    name: wacrm-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # ── Database (Neon DB) ─────────────────────────────────────────────────
+      # Paste your Neon DB connection string
+      - key: DATABASE_URL
+        sync: false
+
+      # ── Redis (Upstash) ────────────────────────────────────────────────────
+      # Paste your Upstash Redis URL (starts with rediss://)
+      - key: REDIS_URL
+        sync: false
+
+      # ── JWT ───────────────────────────────────────────────────────────────
+      # Render auto-generates a strong random value for these
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+
+      # ── Encryption key (64 hex chars = 32 bytes for AES-256) ──────────────
+      # Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      - key: ENCRYPTION_KEY
+        sync: false
+
+      # ── Stripe (optional — leave placeholder if not using billing) ─────────
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_SETUP_PRICE_ID
+        sync: false
+      - key: STRIPE_MONTHLY_PRICE_ID
+        sync: false
+
+      # ── CORS / URLs ────────────────────────────────────────────────────────
+      # FRONTEND_URL = your Vercel deployment URL  e.g. https://wacrm.vercel.app
+      - key: FRONTEND_URL
+        sync: false
+      # APP_BASE_URL = this Render service URL  e.g. https://wacrm-backend.onrender.com
+      - key: APP_BASE_URL
+        sync: false
+
+      # ── WhatsApp / Meta ───────────────────────────────────────────────────
+      - key: META_VERIFY_TOKEN
+        value: billy777_verify
+      - key: META_APP_SECRET
+        sync: false
+
+      # ── Single owner login ────────────────────────────────────────────────
+      - key: OWNER_EMAIL
+        sync: false
+      - key: OWNER_PASSWORD
+        sync: false
+      - key: OWNER_FULL_NAME
+        sync: false
