@@ -98,7 +98,7 @@ async function processMessageJob(job: Job<MessageJobData>): Promise<void> {
   });
 
   if (result.success) {
-    await db.insert(messages).values({
+    const [insertedMessage] = await db.insert(messages).values({
       userId: data.userId,
       campaignId: data.campaignId,
       leadId: data.leadId,
@@ -109,7 +109,7 @@ async function processMessageJob(job: Job<MessageJobData>): Promise<void> {
       templateName: data.templateName,
       status: "sent",
       metaMessageId: result.messageId,
-    });
+    }).returning({ id: messages.id });
 
     await db
       .update(campaignRecipients)
@@ -153,7 +153,7 @@ async function processMessageJob(job: Job<MessageJobData>): Promise<void> {
         .update(conversations)
         .set({
           whatsappNumberId: data.whatsappNumberId,
-          lastMessageId: message.id,
+          lastMessageId: insertedMessage.id,
           lastMessageAt: new Date(),
           updatedAt: new Date(),
         })
@@ -165,7 +165,7 @@ async function processMessageJob(job: Job<MessageJobData>): Promise<void> {
           userId: data.userId,
           leadId: data.leadId,
           whatsappNumberId: data.whatsappNumberId,
-          lastMessageId: message.id,
+          lastMessageId: insertedMessage.id,
           lastMessageAt: new Date(),
           unreadCount: 0,
           status: "active",
@@ -185,7 +185,7 @@ async function processMessageJob(job: Job<MessageJobData>): Promise<void> {
     emitToUser(data.userId, "conversation:new-message", {
       conversationId,
       leadId: data.leadId,
-      message,
+      message: insertedMessage,
       lead: {
         phoneNumber: lead?.phoneNumber ?? data.phoneNumber,
         name: lead?.name ?? null,
