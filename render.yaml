@@ -8,8 +8,8 @@ services:
     name: wacrm-backend
     runtime: node
     rootDir: backend
-    buildCommand: npm ci && npm run build
-    startCommand: npm run db:migrate && node dist/index.js
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run db:migrate:prod && node dist/index.js
     healthCheckPath: /health
     autoDeploy: true
     envVars:
