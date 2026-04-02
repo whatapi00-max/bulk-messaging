@@ -80,4 +80,4 @@ services:
     runtime: node
     schedule: "*/14 * * * *"
     buildCommand: echo "keep-alive ready"
-    startCommand: node -e "const h=require('https');h.get('https://wacrm-backend.onrender.com/health',r=>{r.resume();console.log('Pinged OK, status:',r.statusCode)}).on('error',e=>console.error('Ping failed:',e.message))"
+    startCommand: node -e "const h=require('https');h.get('https://wacrm-backend-dxtg.onrender.com/health',r=>{r.resume();console.log('Pinged OK, status:',r.statusCode)}).on('error',e=>console.error('Ping failed:',e.message))"
