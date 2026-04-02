@@ -6,7 +6,9 @@ import { db } from "../db";
 import {
   campaignRecipients,
   campaigns,
+  conversations,
   failedMessages,
+  leads,
   messages,
   whatsappNumbers,
 } from "../db/schema";
@@ -25,7 +27,8 @@ const queueMap = new Map<string, Queue<MessageJobData>>();
 const workerMap = new Map<string, Worker<MessageJobData>>();
 
 function getQueueName(numberId: string): string {
-  return `messages:number:${numberId}`;
+  const safeNumberId = numberId.replace(/[^a-zA-Z0-9_-]/g, "-");
+  return `messages-number-${safeNumberId}`;
 }
 
 function getOrCreateQueue(numberId: string): Queue<MessageJobData> {
@@ -135,6 +138,59 @@ async function processMessageJob(job: Job<MessageJobData>): Promise<void> {
         updatedAt: new Date(),
       })
       .where(eq(whatsappNumbers.id, data.whatsappNumberId));
+
+    const existingConversation = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(and(eq(conversations.userId, data.userId), eq(conversations.leadId, data.leadId)))
+      .limit(1);
+
+    let conversationId: string;
+
+    if (existingConversation[0]) {
+      conversationId = existingConversation[0].id;
+      await db
+        .update(conversations)
+        .set({
+          whatsappNumberId: data.whatsappNumberId,
+          lastMessageId: message.id,
+          lastMessageAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(conversations.id, conversationId));
+    } else {
+      const inserted = await db
+        .insert(conversations)
+        .values({
+          userId: data.userId,
+          leadId: data.leadId,
+          whatsappNumberId: data.whatsappNumberId,
+          lastMessageId: message.id,
+          lastMessageAt: new Date(),
+          unreadCount: 0,
+          status: "active",
+        })
+        .returning({ id: conversations.id });
+      conversationId = inserted[0].id;
+    }
+
+    const leadRows = await db
+      .select({ phoneNumber: leads.phoneNumber, name: leads.name })
+      .from(leads)
+      .where(eq(leads.id, data.leadId))
+      .limit(1);
+
+    const lead = leadRows[0];
+
+    emitToUser(data.userId, "conversation:new-message", {
+      conversationId,
+      leadId: data.leadId,
+      message,
+      lead: {
+        phoneNumber: lead?.phoneNumber ?? data.phoneNumber,
+        name: lead?.name ?? null,
+      },
+    });
 
     emitToUser(data.userId, "campaign:progress", {
       campaignId: data.campaignId,

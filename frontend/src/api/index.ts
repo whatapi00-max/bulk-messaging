@@ -21,6 +21,7 @@ export const leadsApi = {
   bulkCreate: (leads: Record<string, unknown>[]) => apiClient.post("/leads/bulk", { leads }).then((r) => r.data),
   update: (id: string, payload: Record<string, unknown>) => apiClient.patch(`/leads/${id}`, payload).then((r) => r.data.data),
   remove: (id: string) => apiClient.delete(`/leads/${id}`).then((r) => r.data.data),
+  removeAll: () => apiClient.delete("/leads").then((r) => r.data.data),
 };
 
 // ─── Templates ───────────────────────────────────────────────────────────────

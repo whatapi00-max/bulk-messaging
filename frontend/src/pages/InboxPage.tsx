@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { conversationsApi } from "@/api";
+import { getSocket } from "@/lib/socket";
 import { formatDate, cn } from "@/lib/utils";
 import { Send } from "lucide-react";
 
@@ -42,6 +43,29 @@ export default function InboxPage() {
   });
 
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const socket = getSocket();
+
+    const onConversationMessage = (payload: {
+      conversationId?: string;
+      leadId?: string;
+      message?: { id?: string };
+    }) => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+
+      if (selected && payload.conversationId === selected) {
+        queryClient.invalidateQueries({ queryKey: ["conversation-thread", selected] });
+      }
+    };
+
+    socket.on("conversation:new-message", onConversationMessage);
+
+    return () => {
+      socket.off("conversation:new-message", onConversationMessage);
+    };
+  }, [queryClient, selected]);
+
   const replyMutation = useMutation({
     mutationFn: () => conversationsApi.reply(selected!, reply),
     onSuccess: () => {

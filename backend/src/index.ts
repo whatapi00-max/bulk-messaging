@@ -1,4 +1,3 @@
-import "dotenv/config";
 import http from "http";
 import { createApp } from "./app";
 import { config } from "./config";

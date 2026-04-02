@@ -311,6 +311,31 @@ export default function LeadsPage() {
     },
   });
 
+  const deleteAllMutation = useMutation({
+    mutationFn: () => leadsApi.removeAll() as Promise<{ count?: number }>,
+    onSuccess: (result) => {
+      notifyApp({
+        title: "All Leads Deleted",
+        description: `[Leads > Delete All]\nDeleted Leads: ${Number(result?.count ?? leads.length)}`,
+        kind: "warning",
+      });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      setShowAdd(false);
+      setEditingLeadId(null);
+      setEditingSnapshot(null);
+      reset();
+    },
+    onError: (error: unknown) => {
+      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? (error instanceof Error ? error.message : "Delete all leads failed.");
+      notifyApp({
+        title: "Delete All Leads Failed",
+        description: `[Leads > Delete All]\nError: ${message}`,
+        kind: "error",
+      });
+    },
+  });
+
   const bulkImportMutation = useMutation({
     mutationFn: async (file: File) => {
       const text = await file.text();
@@ -428,6 +453,19 @@ export default function LeadsPage() {
             </Button>
             <Button type="button" variant="outline" onClick={downloadSampleCsv}>
               Download Sample CSV
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="text-red-600 border-red-300 hover:bg-red-50"
+              disabled={deleteAllMutation.isPending || leads.length === 0}
+              onClick={() => {
+                const ok = window.confirm(`Delete ALL ${leads.length} leads? This cannot be undone.`);
+                if (!ok) return;
+                deleteAllMutation.mutate();
+              }}
+            >
+              {deleteAllMutation.isPending ? "Deleting All..." : "Delete All Leads"}
             </Button>
             <Button
               onClick={() => {

@@ -141,7 +141,10 @@ async function handleInboundMessage(
     .where(and(eq(conversations.userId, userId), eq(conversations.leadId, lead.id)))
     .limit(1);
 
+  let conversationId: string;
+
   if (existingConversations[0]) {
+    conversationId = existingConversations[0].id;
     await db
       .update(conversations)
       .set({
@@ -152,7 +155,7 @@ async function handleInboundMessage(
       })
       .where(eq(conversations.id, existingConversations[0].id));
   } else {
-    await db.insert(conversations).values({
+    const insertedConversation = await db.insert(conversations).values({
       userId,
       leadId: lead.id,
       whatsappNumberId,
@@ -160,7 +163,8 @@ async function handleInboundMessage(
       lastMessageAt: new Date(),
       unreadCount: 1,
       status: "active",
-    });
+    }).returning({ id: conversations.id });
+    conversationId = insertedConversation[0].id;
   }
 
   if (latestOutbound?.campaignId) {
@@ -187,5 +191,9 @@ async function handleInboundMessage(
     }
   }
 
-  emitToUser(userId, "conversation:new-message", { leadId: lead.id, message: messageRow });
+  emitToUser(userId, "conversation:new-message", {
+    conversationId,
+    leadId: lead.id,
+    message: messageRow,
+  });
 }

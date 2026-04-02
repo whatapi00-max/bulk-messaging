@@ -6,9 +6,9 @@ import { z } from "zod";
 // Local dev: .env lives at the monorepo root (backend/../.env or backend/../../.env).
 // Production (Render): no .env file — env vars are injected by the platform.
 const candidates = [
-  path.resolve(process.cwd(), ".env"),          // backend/.env
   path.resolve(process.cwd(), "../.env"),       // repo root (dev: run from backend/)
   path.resolve(__dirname, "../../../.env"),     // repo root (tsx: __dirname = src/config/)
+  path.resolve(process.cwd(), ".env"),          // backend/.env fallback
 ];
 for (const p of candidates) {
   if (existsSync(p)) { dotenv.config({ path: p }); break; }

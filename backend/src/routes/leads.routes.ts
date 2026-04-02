@@ -92,6 +92,19 @@ leadsRouter.patch("/:id", validateBody(updateLeadSchema), async (req, res, next)
   }
 });
 
+leadsRouter.delete("/", async (req, res, next) => {
+  try {
+    const deleted = await db
+      .delete(leads)
+      .where(eq(leads.userId, req.user!.userId))
+      .returning({ id: leads.id });
+
+    res.json({ data: { count: deleted.length } });
+  } catch (error) {
+    next(error);
+  }
+});
+
 leadsRouter.delete("/:id", async (req, res, next) => {
   try {
     const deleted = await db

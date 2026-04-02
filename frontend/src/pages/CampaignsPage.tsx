@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { campaignsApi, leadsApi, numbersApi } from "@/api";
 import { notifyApp } from "@/lib/notifications";
 import { formatDate, formatNumber } from "@/lib/utils";
-import { Plus, Play, Download, Trash2 } from "lucide-react";
+import { Plus, Play, Download, Trash2, AlertTriangle, Clock } from "lucide-react";
 
 const campaignSchema = z
   .object({
@@ -31,6 +31,12 @@ const campaignSchema = z
 
 type CampaignForm = z.infer<typeof campaignSchema>;
 
+interface CampaignTargetFilters {
+  leadIds?: string[];
+  messageText?: string;
+  templateName?: string;
+}
+
 interface Campaign {
   id: string;
   name: string;
@@ -40,6 +46,7 @@ interface Campaign {
   messagesDelivered?: number;
   messagesFailed?: number;
   createdAt: string;
+  targetFilters?: CampaignTargetFilters;
 }
 
 export default function CampaignsPage() {
@@ -136,9 +143,13 @@ export default function CampaignsPage() {
     },
   });
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<CampaignForm>({
+  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<CampaignForm>({
     resolver: zodResolver(campaignSchema),
   });
+
+  const watchedMessageText = watch("messageText");
+  const watchedTemplateName = watch("templateName");
+  const isFreetextMode = Boolean(watchedMessageText?.trim()) && !watchedTemplateName?.trim();
 
   const hasLeads = leads.length > 0;
   const hasNumbers = numbers.length > 0;
@@ -176,6 +187,18 @@ export default function CampaignsPage() {
                   <Textarea {...register("messageText")} rows={3} placeholder="Hello {{name}}! We have a special offer..." />
                   {errors.messageText && (
                     <p className="text-xs text-red-500">{errors.messageText.message}</p>
+                  )}
+                  {isFreetextMode && (
+                    <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <div>
+                        <p className="font-medium">Free text delivery restriction</p>
+                        <p className="mt-0.5 text-xs">
+                          Meta only allows free text messages within an active 24-hour conversation window.
+                          For new or cold contacts, use a Meta-approved template name instead — otherwise messages may be silently rejected.
+                        </p>
+                      </div>
+                    </div>
                   )}
                 </div>
 
@@ -284,7 +307,19 @@ export default function CampaignsPage() {
                       </TableCell>
                       <TableCell>{formatNumber(c.totalRecipients ?? 0)}</TableCell>
                       <TableCell>{formatNumber(c.messagesSent ?? 0)}</TableCell>
-                      <TableCell className="text-green-600">{formatNumber(c.messagesDelivered ?? 0)}</TableCell>
+                      <TableCell>
+                        {(c.messagesSent ?? 0) > 0 && (c.messagesDelivered ?? 0) === 0 ? (
+                          <span
+                            className="flex items-center gap-1 text-xs font-medium text-amber-600"
+                            title="Accepted by Meta — waiting for delivery webhook confirmation. Configure your webhook in Meta Developer Console to receive delivery updates."
+                          >
+                            <Clock className="h-3 w-3" />
+                            Awaiting webhook
+                          </span>
+                        ) : (
+                          <span className="text-green-600">{formatNumber(c.messagesDelivered ?? 0)}</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-red-500">{formatNumber(c.messagesFailed ?? 0)}</TableCell>
                       <TableCell className="text-muted-foreground text-xs">{formatDate(c.createdAt)}</TableCell>
                       <TableCell>
@@ -293,7 +328,15 @@ export default function CampaignsPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => startMutation.mutate({ id: c.id, name: c.name })}
+                              onClick={() => {
+                                const isFreeText = Boolean(c.targetFilters?.messageText?.trim()) && !c.targetFilters?.templateName?.trim();
+                                const msg = isFreeText
+                                  ? `Start "${c.name}"?\n\n⚠️ This campaign uses free text (no template).\nMessages will only reach contacts with an active 24-hour conversation window.\nCold or new contacts may not receive them.\n\nContinue anyway?`
+                                  : `Start campaign "${c.name}"?`;
+                                if (window.confirm(msg)) {
+                                  startMutation.mutate({ id: c.id, name: c.name });
+                                }
+                              }}
                               disabled={startMutation.isPending}
                             >
                               <Play className="w-3 h-3 mr-1" />Start

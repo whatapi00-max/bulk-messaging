@@ -36,11 +36,14 @@ export async function registerUser(input: RegisterInput) {
 }
 
 export async function loginUser(input: LoginInput) {
-  if (input.email !== config.OWNER_EMAIL) {
+  const loginEmail = input.email.trim().toLowerCase();
+  const ownerEmail = config.OWNER_EMAIL.trim().toLowerCase();
+
+  if (loginEmail !== ownerEmail) {
     throw new HttpError(401, "Invalid credentials");
   }
 
-  const found = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
+  const found = await db.select().from(users).where(eq(users.email, ownerEmail)).limit(1);
   const user = found[0];
 
   if (!user) {
@@ -66,13 +69,14 @@ export async function loginUser(input: LoginInput) {
 }
 
 export async function ensureOwnerAccount() {
+  const ownerEmail = config.OWNER_EMAIL.trim().toLowerCase();
   const passwordHash = await bcrypt.hash(config.OWNER_PASSWORD, 12);
-  const existing = await db.select().from(users).where(eq(users.email, config.OWNER_EMAIL)).limit(1);
+  const existing = await db.select().from(users).where(eq(users.email, ownerEmail)).limit(1);
   const owner = existing[0];
 
   if (!owner) {
     await db.insert(users).values({
-      email: config.OWNER_EMAIL,
+      email: ownerEmail,
       passwordHash,
       fullName: config.OWNER_FULL_NAME,
       subscriptionStatus: "active",

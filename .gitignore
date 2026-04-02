@@ -23,6 +23,3 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 
-# Docker volumes / data
-postgres-data/
-redis-data/

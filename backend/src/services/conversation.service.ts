@@ -2,8 +2,55 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { conversations, leads, messages, whatsappNumbers } from "../db/schema";
 import { sendTextReply } from "./whatsapp.service";
+import { emitToUser } from "../socket";
+
+async function backfillMissingConversations(userId: string): Promise<void> {
+  const existing = await db
+    .select({ leadId: conversations.leadId })
+    .from(conversations)
+    .where(eq(conversations.userId, userId));
+
+  const existingLeadIds = new Set(existing.map((row) => row.leadId));
+
+  const recentMessages = await db
+    .select({
+      id: messages.id,
+      leadId: messages.leadId,
+      whatsappNumberId: messages.whatsappNumberId,
+      direction: messages.direction,
+      timestamp: messages.timestamp,
+    })
+    .from(messages)
+    .where(eq(messages.userId, userId))
+    .orderBy(desc(messages.timestamp));
+
+  const latestByLead = new Map<string, (typeof recentMessages)[number]>();
+  for (const message of recentMessages) {
+    if (!message.leadId) continue;
+    if (!latestByLead.has(message.leadId)) {
+      latestByLead.set(message.leadId, message);
+    }
+  }
+
+  const missing = [...latestByLead.entries()].filter(([leadId]) => !existingLeadIds.has(leadId));
+  if (missing.length === 0) return;
+
+  await db.insert(conversations).values(
+    missing.map(([, message]) => ({
+      userId,
+      leadId: message.leadId!,
+      whatsappNumberId: message.whatsappNumberId,
+      lastMessageId: message.id,
+      lastMessageAt: message.timestamp,
+      unreadCount: message.direction === "inbound" ? 1 : 0,
+      status: "active",
+    }))
+  );
+}
 
 export async function listConversations(userId: string) {
+  await backfillMissingConversations(userId);
+
   return db
     .select({
       id: conversations.id,
@@ -85,6 +132,12 @@ export async function sendConversationReply(
     .update(conversations)
     .set({ lastMessageId: message.id, lastMessageAt: new Date(), updatedAt: new Date() })
     .where(eq(conversations.id, conversationId));
+
+  emitToUser(userId, "conversation:new-message", {
+    conversationId,
+    leadId: convo.leadId,
+    message,
+  });
 
   return { success: true, message };
 }
