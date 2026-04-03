@@ -19,8 +19,9 @@ services:
       # ── Database (Supabase PostgreSQL) ──────────────────────────────────
       # Paste your Supabase Transaction pooler connection string (port 6543)
       - key: DATABASE_URL
+        sync: false      # Direct connection for migrations (port 5432)
+      - key: DIRECT_URL
         sync: false
-
       # ── JWT ───────────────────────────────────────────────────────────────
       # Render auto-generates a strong random value for these
       - key: JWT_SECRET

@@ -6,7 +6,8 @@ import * as path from "path";
 import "dotenv/config";
 
 async function runMigration() {
-  const url = process.env.DATABASE_URL!;
+  // Use DIRECT_URL for migrations (bypasses pgbouncer which blocks DDL)
+  const url = process.env.DIRECT_URL ?? process.env.DATABASE_URL!;
   const needsSsl =
     url.includes("supabase.co") ||
     url.includes("neon.tech") ||
