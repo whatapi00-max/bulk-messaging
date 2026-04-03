@@ -7,10 +7,14 @@ import "dotenv/config";
 
 async function runMigration() {
   const url = process.env.DATABASE_URL!;
-  const ssl = url.includes("neon.tech") || url.includes("sslmode=require")
-    ? { rejectUnauthorized: false }
-    : false;
-  const pool = new Pool({ connectionString: url, ssl });
+  const needsSsl =
+    url.includes("supabase.co") ||
+    url.includes("neon.tech") ||
+    url.includes("sslmode=require");
+  const pool = new Pool({
+    connectionString: url,
+    ssl: needsSsl ? { rejectUnauthorized: false } : false,
+  });
   const db = drizzle(pool, { schema });
 
   console.log("⏳ Running database migrations...");

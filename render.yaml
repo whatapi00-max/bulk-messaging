@@ -16,14 +16,9 @@ services:
       - key: NODE_ENV
         value: production
 
-      # ── Database (Neon DB) ─────────────────────────────────────────────────
-      # Paste your Neon DB connection string
+      # ── Database (Supabase PostgreSQL) ──────────────────────────────────
+      # Paste your Supabase Transaction pooler connection string (port 6543)
       - key: DATABASE_URL
-        sync: false
-
-      # ── Redis (Upstash) ────────────────────────────────────────────────────
-      # Paste your Upstash Redis URL (starts with rediss://)
-      - key: REDIS_URL
         sync: false
 
       # ── JWT ───────────────────────────────────────────────────────────────

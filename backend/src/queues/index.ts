@@ -1,7 +1,6 @@
 import type { Server as SocketIOServer } from "socket.io";
-import { Queue, Worker, type Job } from "bullmq";
+import PgBoss from "pg-boss";
 import { and, eq, sql } from "drizzle-orm";
-import { createRedisConnection } from "../config/redis";
 import { db } from "../db";
 import {
   campaignRecipients,
@@ -22,69 +21,18 @@ import {
   shouldAutoPauseNumber,
   type RotationCandidate,
 } from "../services/number-rotation.service";
+import { config } from "../config";
 
-const queueMap = new Map<string, Queue<MessageJobData>>();
-const workerMap = new Map<string, Worker<MessageJobData>>();
+// ─── Single pg-boss instance (uses Supabase PostgreSQL — no Redis needed) ────
+const JOB_NAME = "send-message";
+let boss: PgBoss | null = null;
 
-function getQueueName(numberId: string): string {
-  const safeNumberId = numberId.replace(/[^a-zA-Z0-9_-]/g, "-");
-  return `messages-number-${safeNumberId}`;
+function getBoss(): PgBoss {
+  if (!boss) throw new Error("pg-boss not started — call startQueueInfrastructure first");
+  return boss;
 }
 
-function getOrCreateQueue(numberId: string): Queue<MessageJobData> {
-  const existing = queueMap.get(numberId);
-  if (existing) return existing;
-
-  const queue = new Queue<MessageJobData>(getQueueName(numberId), {
-    connection: createRedisConnection(),
-    defaultJobOptions: {
-      attempts: 5,
-      backoff: { type: "exponential", delay: 3000 },
-      removeOnComplete: 1000,
-      removeOnFail: 2000,
-    },
-  });
-
-  queueMap.set(numberId, queue);
-  return queue;
-}
-
-function ensureWorker(numberId: string): Worker<MessageJobData> {
-  const existing = workerMap.get(numberId);
-  if (existing) return existing;
-
-  const worker = new Worker<MessageJobData>(
-    getQueueName(numberId),
-    async (job) => processMessageJob(job),
-    {
-      connection: createRedisConnection(),
-      concurrency: 20,
-      limiter: { max: 1, duration: 1000 },
-    }
-  );
-
-  worker.on("completed", (job) => {
-    logger.info("Queue job completed", { jobId: job.id, queue: getQueueName(numberId) });
-  });
-
-  worker.on("failed", async (job, error) => {
-    logger.error("Queue job failed", {
-      queue: getQueueName(numberId),
-      jobId: job?.id,
-      error: error.message,
-    });
-
-    if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
-      await persistFinalFailure(job.data, error.message);
-    }
-  });
-
-  workerMap.set(numberId, worker);
-  return worker;
-}
-
-async function processMessageJob(job: Job<MessageJobData>): Promise<void> {
-  const data = job.data;
+async function processMessageJob(data: MessageJobData): Promise<void> {
   const result = await sendWhatsAppMessage({
     phoneNumberId: data.phoneNumberId,
     accessToken: data.accessToken,
@@ -259,9 +207,7 @@ async function processMessageJob(job: Job<MessageJobData>): Promise<void> {
       | null;
 
     if (failover) {
-      ensureWorker(failover.id);
-      const queue = getOrCreateQueue(failover.id);
-      await queue.add("send-message-failover", {
+      await getBoss().send(JOB_NAME, {
         ...data,
         whatsappNumberId: failover.id,
         phoneNumberId: failover.phoneNumberId,
@@ -335,13 +281,62 @@ async function persistFinalFailure(data: MessageJobData, errorMessage: string, e
 }
 
 export async function enqueueMessages(jobs: MessageJobData[]): Promise<void> {
+  const b = getBoss();
+
+  // 1-second spacing per number prevents hitting Meta's per-number rate limit
+  const offsetSeconds = new Map<string, number>();
+
   for (const job of jobs) {
-    ensureWorker(job.whatsappNumberId);
-    const queue = getOrCreateQueue(job.whatsappNumberId);
-    await queue.add("send-message", job);
+    const offset = offsetSeconds.get(job.whatsappNumberId) ?? 0;
+    offsetSeconds.set(job.whatsappNumberId, offset + 1);
+
+    await b.send(JOB_NAME, job as unknown as object, {
+      retryLimit: 5,
+      retryDelay: 3,
+      ...(offset > 0 ? { startAfter: offset } : {}),
+    });
   }
 }
 
 export async function startQueueInfrastructure(_io?: SocketIOServer): Promise<void> {
-  logger.info("BullMQ infrastructure ready");
+  const needsSsl =
+    config.DATABASE_URL.includes("supabase.co") ||
+    config.DATABASE_URL.includes("neon.tech") ||
+    config.DATABASE_URL.includes("sslmode=require");
+
+  boss = new PgBoss({
+    connectionString: config.DATABASE_URL,
+    ssl: needsSsl ? { rejectUnauthorized: false } : false,
+    monitorStateIntervalSeconds: 60,
+  });
+
+  boss.on("error", (err) => logger.error("pg-boss error", { error: (err as Error).message }));
+
+  await boss.start();
+  logger.info("pg-boss queue started (Supabase PostgreSQL)");
+
+  await boss.work(
+    JOB_NAME,
+    { teamSize: 5, teamConcurrency: 1, includeMetadata: true },
+    async (job: PgBoss.JobWithMetadata<MessageJobData>) => {
+      try {
+        await processMessageJob(job.data);
+        logger.info("Job completed", { jobId: job.id });
+      } catch (err) {
+        logger.error("Job failed", {
+          jobId: job.id,
+          retry: job.retrycount,
+          error: (err as Error).message,
+        });
+        // On final retry, persist failure rather than keep throwing
+        if ((job.retrycount ?? 0) >= 4) {
+          await persistFinalFailure(job.data, (err as Error).message);
+        } else {
+          throw err; // pg-boss will retry
+        }
+      }
+    }
+  );
+
+  logger.info("Message queue worker registered");
 }
