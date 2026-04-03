@@ -1,7 +1,5 @@
 # Render Blueprint — deploy the backend as a Node web service
 # Docs: https://render.com/docs/blueprint-spec
-#
-# DB migration runs automatically on every deploy via startCommand.
 
 services:
   - type: web
@@ -9,7 +7,7 @@ services:
     runtime: node
     rootDir: backend
     buildCommand: NODE_ENV=development npm ci && npm run build
-    startCommand: npm run db:migrate:prod && node dist/index.js
+    startCommand: node dist/index.js
     healthCheckPath: /health
     autoDeploy: true
     envVars:
