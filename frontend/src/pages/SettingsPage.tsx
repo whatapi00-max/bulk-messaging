@@ -33,7 +33,7 @@ const complianceItems = [
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const webhookUrl = `${window.location.origin.replace(/:\d+$/, ":8080")}/api/webhooks/meta`;
+  const webhookUrl = `${import.meta.env.VITE_API_URL?.replace(/\/api$/, "") ?? "https://wacrm-backend-dxtg.onrender.com"}/api/webhooks/meta`;
   const verifyToken = import.meta.env.VITE_META_VERIFY_TOKEN ?? "billy777_verify";
 
   const { data: autoReplies = [] } = useQuery({
