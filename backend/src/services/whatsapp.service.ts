@@ -20,6 +20,7 @@ export interface SendMessageOptions {
   templateName?: string;
   templateLanguage?: string;
   templateVariables?: Record<string, string>;
+  headerImageUrl?: string;
 }
 
 export interface SendMessageResult {
@@ -109,7 +110,7 @@ export async function sendWhatsAppMessage(
   let payload: MetaTextMessage | MetaTemplateMessage;
 
   if (options.templateName) {
-    const components = buildTemplateComponents(options.templateVariables ?? {}) ?? [];
+    const components = buildTemplateComponents(options.templateVariables ?? {}, options.headerImageUrl) ?? [];
     payload = {
       messaging_product: "whatsapp",
       to,
@@ -171,17 +172,27 @@ export async function sendWhatsAppMessage(
 }
 
 function buildTemplateComponents(
-  variables: Record<string, string>
+  variables: Record<string, string>,
+  headerImageUrl?: string
 ): MetaTemplateMessage["template"]["components"] {
-  const entries = Object.values(variables);
-  if (entries.length === 0) return [];
+  const components: MetaTemplateMessage["template"]["components"] = [];
 
-  return [
-    {
+  if (headerImageUrl) {
+    components.push({
+      type: "header",
+      parameters: [{ type: "image", image: { link: headerImageUrl } }],
+    });
+  }
+
+  const entries = Object.values(variables);
+  if (entries.length > 0) {
+    components.push({
       type: "body",
       parameters: entries.map((text) => ({ type: "text", text })),
-    },
-  ];
+    });
+  }
+
+  return components;
 }
 
 /**

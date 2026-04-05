@@ -43,6 +43,7 @@ async function processMessageJob(data: MessageJobData): Promise<void> {
     templateName: data.templateName,
     templateLanguage: data.templateLanguage,
     templateVariables: data.templateVariables,
+    headerImageUrl: data.headerImageUrl,
   });
 
   if (result.success) {

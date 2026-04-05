@@ -132,6 +132,7 @@ export interface MessageJobData {
   templateName?: string;
   templateLanguage?: string;
   templateVariables?: Record<string, string>;
+  headerImageUrl?: string;
   messageText?: string;
   attempt: number;
 }

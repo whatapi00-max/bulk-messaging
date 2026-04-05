@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireAuth } from "../middlewares/auth.middleware";
 import { validateBody } from "../middlewares/validate.middleware";
 import { db } from "../db";
-import { campaignRecipients, campaigns, failedMessages, leads, whatsappNumbers } from "../db/schema";
+import { campaignRecipients, campaigns, failedMessages, leads, templates, whatsappNumbers } from "../db/schema";
 import { calculateProportionalAllocation } from "../services/number-rotation.service";
 import { enqueueMessages } from "../queues";
 import { decrypt } from "../utils/crypto";
@@ -113,6 +113,19 @@ campaignsRouter.post("/:id/start", async (req, res, next) => {
       templateVariables?: Record<string, string>;
     };
 
+    // Load the template to get headerType/headerContent for image headers
+    let headerImageUrl: string | undefined;
+    if (campaign.templateId) {
+      const [tpl] = await db
+        .select()
+        .from(templates)
+        .where(eq(templates.id, campaign.templateId))
+        .limit(1);
+      if (tpl && tpl.headerType === "image" && tpl.headerContent) {
+        headerImageUrl = tpl.headerContent;
+      }
+    }
+
     const leadIds = Array.isArray(config.leadIds) ? config.leadIds : [];
     const numberIds = Array.isArray(campaign.numberIds) ? (campaign.numberIds as string[]) : [];
 
@@ -188,6 +201,7 @@ campaignsRouter.post("/:id/start", async (req, res, next) => {
         templateName: config.templateName,
         templateLanguage: config.templateLanguage,
         templateVariables: config.templateVariables ?? {},
+        headerImageUrl,
         messageText: config.messageText,
         attempt: 1,
       };

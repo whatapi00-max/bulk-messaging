@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,16 +10,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { templatesApi } from "@/api";
+import { templatesApi, mediaApi } from "@/api";
 import { notifyApp } from "@/lib/notifications";
 import { formatDate } from "@/lib/utils";
-import { Plus, Copy, Pencil, Trash2 } from "lucide-react";
+import { Plus, Copy, Pencil, Trash2, Upload, ImageIcon } from "lucide-react";
 
 const templateSchema = z.object({
   name: z.string().min(2),
   category: z.string().optional(),
   language: z.string().default("en"),
   bodyText: z.string().min(1),
+  headerType: z.string().optional(),
   headerContent: z.string().optional(),
   footerText: z.string().optional(),
   metaTemplateName: z.string().optional(),
@@ -33,6 +34,7 @@ interface Template {
   category?: string | null;
   language: string;
   bodyText?: string | null;
+  headerType?: string | null;
   headerContent?: string | null;
   footerText?: string | null;
   metaTemplateName?: string | null;
@@ -46,6 +48,7 @@ interface TemplateEditSnapshot {
   category?: string | null;
   language: string;
   bodyText?: string | null;
+  headerType?: string | null;
   headerContent?: string | null;
   footerText?: string | null;
   metaTemplateName?: string | null;
@@ -59,6 +62,8 @@ export default function TemplatesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editingSnapshot, setEditingSnapshot] = useState<TemplateEditSnapshot | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   const { data: templates = [], isLoading } = useQuery<Template[]>({
@@ -139,7 +144,7 @@ export default function TemplatesPage() {
     },
   });
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<TemplateForm>({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<TemplateForm>({
     resolver: zodResolver(templateSchema),
   });
 
@@ -149,6 +154,7 @@ export default function TemplatesPage() {
       category: template.category ?? "",
       language: template.language,
       bodyText: template.bodyText ?? "",
+      headerType: template.headerType ?? "",
       headerContent: template.headerContent ?? "",
       footerText: template.footerText ?? "",
       metaTemplateName: template.metaTemplateName ?? "",
@@ -160,6 +166,7 @@ export default function TemplatesPage() {
       category: template.category,
       language: template.language,
       bodyText: template.bodyText,
+      headerType: template.headerType,
       headerContent: template.headerContent,
       footerText: template.footerText,
       metaTemplateName: template.metaTemplateName,
@@ -210,9 +217,75 @@ export default function TemplatesPage() {
                     <Input {...register("language")} defaultValue="en" />
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <Label>Header (optional)</Label>
-                  <Input {...register("headerContent")} placeholder="Header text" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label>Header Type</Label>
+                    <select
+                      {...register("headerType")}
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="">None</option>
+                      <option value="text">Text</option>
+                      <option value="image">Image</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>{watch("headerType") === "image" ? "Image" : "Header Text"}</Label>
+                    {watch("headerType") === "image" ? (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Input
+                            {...register("headerContent")}
+                            placeholder="https://example.com/image.jpg"
+                            className="flex-1"
+                          />
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              try {
+                                setUploading(true);
+                                const result = await mediaApi.upload(file);
+                                setValue("headerContent", result.url);
+                                notifyApp({ title: "Image Uploaded", description: result.originalName, kind: "success" });
+                              } catch (err) {
+                                const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Upload failed";
+                                notifyApp({ title: "Upload Failed", description: msg, kind: "error" });
+                              } finally {
+                                setUploading(false);
+                                if (fileInputRef.current) fileInputRef.current.value = "";
+                              }
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploading}
+                          >
+                            {uploading ? "Uploading..." : <><Upload className="w-4 h-4 mr-1" /> Upload</>}
+                          </Button>
+                        </div>
+                        {watch("headerContent") && watch("headerType") === "image" && (
+                          <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/30">
+                            <ImageIcon className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground truncate flex-1">{watch("headerContent")}</span>
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground">Upload an image or paste a public URL (JPEG/PNG/WebP, max 5MB)</p>
+                      </div>
+                    ) : (
+                      <Input
+                        {...register("headerContent")}
+                        placeholder="Header text"
+                        disabled={!watch("headerType")}
+                      />
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <Label>Body Text *</Label>

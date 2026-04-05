@@ -32,6 +32,17 @@ export const templatesApi = {
   remove: (id: string) => apiClient.delete(`/templates/${id}`).then((r) => r.data.data),
 };
 
+// ─── Media ───────────────────────────────────────────────────────────────────
+export const mediaApi = {
+  upload: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiClient
+      .post("/media/upload", formData, { headers: { "Content-Type": "multipart/form-data" } })
+      .then((r) => r.data.data as { filename: string; originalName: string; url: string; size: number; mimeType: string });
+  },
+};
+
 // ─── Campaigns ───────────────────────────────────────────────────────────────
 export const campaignsApi = {
   list: () => apiClient.get("/campaigns").then((r) => r.data.data),
